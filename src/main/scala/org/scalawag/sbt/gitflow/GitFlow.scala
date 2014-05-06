@@ -37,7 +37,7 @@ private[gitflow] object Version {
       None
 }
 
-case class ArtifactVersion(major:Int,minor:Int,incremental:Option[Int],feature:Option[String],snapshot:Boolean) {
+case class ArtifactVersion(major:Int,minor:Int,incremental:Option[Int] = Some(0),feature:Option[String] = None,snapshot:Boolean = true) {
   override val toString = {
     val i = incremental.map("." + _).getOrElse("")
     val f = feature.map("-" + _).getOrElse("")
@@ -105,19 +105,19 @@ class GitFlow(val repository:Repository) {
     currentBranch match {
       case "develop" =>
         val v = nextReleaseVersion
-        ArtifactVersion(v.major, v.minor, None, None, true)
+        ArtifactVersion(v.major,v.minor)
       case Slashed("release", version) =>
         val v = Version.parse(version).get
-        ArtifactVersion(v.major, v.minor, None, None, true)
+        ArtifactVersion(v.major,v.minor)
       case Slashed("hotfix", version) =>
         val v = Version.parse(version).get
-        ArtifactVersion(v.major, v.minor, v.incremental, None, true)
+        ArtifactVersion(v.major,v.minor,v.incremental)
       case Slashed("feature", feature) =>
         val v = nextReleaseVersion
-        ArtifactVersion(v.major, v.minor, None, Some(feature), true)
+        ArtifactVersion(v.major,v.minor,feature = Some(feature))
       case _ =>
         val v = Version.parse(tagForCurrentCommit).get
-        ArtifactVersion(v.major, v.minor, v.incremental, None, false)
+        ArtifactVersion(v.major,v.minor,v.incremental,snapshot = false)
     }
   }
 }

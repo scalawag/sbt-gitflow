@@ -27,10 +27,10 @@ class GitFlowTest extends FunSuite with Matchers with BeforeAndAfterAll {
   }
 
   val refToVersion = Map(
-    "develop" -> "0.3-SNAPSHOT",
-    "release/0.2" -> "0.2-SNAPSHOT",
+    "develop" -> "0.3.0-SNAPSHOT",
+    "release/0.2" -> "0.2.0-SNAPSHOT",
     "0.1" -> "0.1",
-    "feature/exp" -> "0.3-exp-SNAPSHOT",
+    "feature/exp" -> "0.3.0-exp-SNAPSHOT",
     "hotfix/0.1.2" -> "0.1.2-SNAPSHOT",
     "0.1.1" -> "0.1.1",
     "master" -> "0.1.1",
