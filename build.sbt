@@ -2,7 +2,7 @@ organization := "org.scalawag.sbt.gitflow"
 
 name := "sbt-gitflow"
 
-version := "1.1.0"
+version := "1.2-SNAPSHOT"
 
 crossPaths := false
 
