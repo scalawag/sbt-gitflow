@@ -130,6 +130,8 @@ object GitFlow {
   lazy val WorkingDir = GitFlow()
 
   def main(args:Array[String]) {
-    println(WorkingDir.version)
+    // If an optional path is passed in as an argument, use that instead of the current directory.
+    val dir = args.headOption.map(path => GitFlow(new File(path))).getOrElse(WorkingDir)
+    println(dir.version)
   }
 }
