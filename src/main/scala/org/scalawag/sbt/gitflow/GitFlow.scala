@@ -53,8 +53,14 @@ class GitFlow(val repository:Repository) {
 
   private def currentBranch = repository.getBranch
 
+  private def localRefs = repository.getAllRefsByPeeledObjectId.get(currentCommit)
+
   private def localBranches = {
-    repository.getAllRefsByPeeledObjectId.get(currentCommit).filter(_.getName.startsWith("refs/heads")).map(_.getName.stripPrefix("refs/heads/")).toList
+    localRefs.filter(_.getName.startsWith("refs/heads")).map(_.getName.stripPrefix("refs/heads/")).toList
+  }
+
+  private def localTags = {
+    localRefs.filter(_.getName.startsWith("refs/tags")).map(_.getName.stripPrefix("refs/tags/")).toList
   }
 
   private def releaseVersions = {
@@ -71,24 +77,7 @@ class GitFlow(val repository:Repository) {
   }
 
   private def tagForCurrentCommit = {
-    val tags = repository.getTags filter {
-      case (tag, ref) =>
-        // Has to be formatted like a version tag or we don't care about it
-        Version.parse(tag).isDefined
-    } filter {
-      case (tag, ref) =>
-        // Has to point to our current commit or we don't care about it.
-        val w = new RevWalk(repository)
-        val commitId = w.parseAny(ref.getObjectId) match {
-          case tag: RevTag => tag.getObject.getId
-          case tag: RevCommit => tag.getId
-        }
-        commitId == currentCommit
-    } map {
-      case (tag, ref) =>
-        // All we really care about is the simple tag name.
-        tag //.replaceAllLiterally("refs/tags/", "")
-    }
+    val tags = localTags flatMap Version.parse map {_.toString}
 
     if (tags.size > 1)
       throw new IllegalStateException("your current commit has multiple version tags (so ambiguous): " + tags.mkString(" "))
@@ -190,13 +179,17 @@ class GitFlow(val repository:Repository) {
   **/
   def version = {
     currentBranchArtifactVersion orElse taggedArtifactVersion orElse detachedHeadArtifactVersion getOrElse {
-      throw new IllegalStateException(s"""Unable to determine version from checked out branch, tags, or other refs.
-      |  Working Directory: ${repository.getWorkTree}
-      |  Current Commit: ${currentCommit}
-      |  Current Branch: ${currentBranch}
-      |  Local Branches: ${localBranches.mkString(",")}
-      """.stripMargin)
+      throw new IllegalStateException(s"Unable to determine version from checked out branch, tags, or other refs.\n${toString}")
     }
+  }
+
+  override def toString: String = {
+    s"""
+      |Working Directory: ${repository.getWorkTree}
+      |Current Commit: ${currentCommit}
+      |Current Branch: ${currentBranch}
+      |Local Branches: ${localBranches.mkString(",")}
+      |Local Tags: ${localTags.mkString(",")}""".stripMargin
   }
 }
 
