@@ -47,6 +47,10 @@ case class ArtifactVersion(major:Int,minor:Int,incremental:Option[Int] = Some(0)
   }
 }
 
+object ArtifactVersion {
+  val ZeroSnapshot = ArtifactVersion(0,0,Some(0),None,true)
+}
+
 class GitFlow(val repository:Repository) {
 
   private def currentCommit = repository.resolve("HEAD")
@@ -152,7 +156,7 @@ class GitFlow(val repository:Repository) {
   }
 
   /**
-   * The version is determined by applying the following rules in order, stopping as soon as one succeeds:
+   * The identifiedVersion is determined by applying the following rules in order, stopping as soon as one succeeds:
    * 1) If the develop branch is checked out, the version is <next_release_version>-SNAPSHOT
    * 2) If a release branch is checked out, the version is <release-version>-SNAPSHOT
    * 3) If a hotfix branch is checked out, the version is <hotfix-version>-SNAPSHOT
@@ -175,13 +179,27 @@ class GitFlow(val repository:Repository) {
    *
    * Version tags must match the pattern <major>.<minor>.<optional incremental> Regex: \d+\.\d+(\.\d+)?
    *
-   * @return String version
+   * @return the best artifact version to use, given the state of git
   **/
-  def version = {
-    currentBranchArtifactVersion orElse taggedArtifactVersion orElse detachedHeadArtifactVersion getOrElse {
-      throw new IllegalStateException(s"Unable to determine version from checked out branch, tags, or other refs.\n${toString}")
-    }
+
+  def identifiedVersion = currentBranchArtifactVersion orElse taggedArtifactVersion orElse detachedHeadArtifactVersion
+
+  /** Returns the identifiedVersion of the git directory (if available).  Otherwise, throws an IllegalStateException.
+   */
+
+  def version = identifiedVersion getOrElse {
+    throw new IllegalStateException(s"Unable to determine version from checked out branch, tags, or other refs.\n${toString}")
   }
+
+  /** Returns the identifiedVersion of the git directory (if available).  Otherwise, returns 0.0-SNAPSHOT.
+   */
+
+  def versionOrZero = identifiedVersion getOrElse ArtifactVersion.ZeroSnapshot
+
+  /** Returns the identifiedVersion of the git directory (if available).  Otherwise, returns the current develop version.
+   */
+
+  def versionOrDevelop = identifiedVersion getOrElse developArtifactVersion
 
   override def toString: String = {
     s"""

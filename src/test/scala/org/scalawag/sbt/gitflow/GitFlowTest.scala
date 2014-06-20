@@ -45,7 +45,7 @@ class GitFlowTest extends FunSuite with Matchers with BeforeAndAfterAll {
   )
 
   refToVersion foreach { case (r,v) =>
-    test(s"$r -> $v") {
+    test(s"version($r) -> $v") {
       Git.wrap(gitflow.repository).checkout.setName(r).call
       v match {
         case c:Class[_] =>
@@ -54,5 +54,15 @@ class GitFlowTest extends FunSuite with Matchers with BeforeAndAfterAll {
           gitflow.version.toString shouldEqual v
       }
     }
+  }
+
+  test("versionOrZero(8d4da56dda3a458b6eb4d9c7e5ae15090233f261) -> 0.0.0-SNAPSHOT") {
+    Git.wrap(gitflow.repository).checkout.setName("8d4da56dda3a458b6eb4d9c7e5ae15090233f261").call
+    gitflow.versionOrZero.toString shouldEqual "0.0.0-SNAPSHOT"
+  }
+
+  test("versionOrDevelop(8d4da56dda3a458b6eb4d9c7e5ae15090233f261) -> 0.5.0-SNAPSHOT") {
+    Git.wrap(gitflow.repository).checkout.setName("8d4da56dda3a458b6eb4d9c7e5ae15090233f261").call
+    gitflow.versionOrDevelop.toString shouldEqual "0.5.0-SNAPSHOT"
   }
 }
