@@ -6,9 +6,7 @@ import java.io.File
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder
 import org.eclipse.jgit.lib.Repository
 
-private[gitflow] case class Version(digits:Array[Int]) extends Ordered[Version] {
-  require(digits.size >= 2 && digits.size <= 3)
-
+private[gitflow] class Version(val digits:Array[Int]) extends Ordered[Version] {
   override def compare(that:Version):Int = {
     // No version (-1) sorts before any version (>= 0)
     this.digits.zipAll(that.digits,-1,-1) map { case (l,r) =>
@@ -32,12 +30,14 @@ private[gitflow] object Version {
 
   private[gitflow] def parse(s:String) =
     if ( VersionTag.pattern.matcher(s).matches )
-      Some(Version(s.split('.').map(_.toInt)))
+      Some(new Version(s.split('.').map(_.toInt)))
     else
       None
+
+  def unapplySeq(v:Version) = Some(v.digits.toSeq)
 }
 
-case class ArtifactVersion(major:Int,minor:Int,incremental:Option[Int] = Some(0),feature:Option[String] = None,snapshot:Boolean = true) {
+case class ArtifactVersion(major:Int,minor:Int,incremental:Option[Int] = None,feature:Option[String] = None,snapshot:Boolean = true) {
   override val toString = {
     val i = incremental.map("." + _).getOrElse("")
     val f = feature.map("-" + _).getOrElse("")
@@ -48,7 +48,7 @@ case class ArtifactVersion(major:Int,minor:Int,incremental:Option[Int] = Some(0)
 }
 
 object ArtifactVersion {
-  val ZeroSnapshot = ArtifactVersion(0,0,Some(0),None,true)
+  val ZeroSnapshot = ArtifactVersion(0,0)
 }
 
 class GitFlow(val repository:Repository) {
@@ -92,22 +92,25 @@ class GitFlow(val repository:Repository) {
   private def mostRecentReleaseVersion = releaseVersions.last
 
   private def nextReleaseVersion =
-    Version(Array(mostRecentReleaseVersion.digits(0), mostRecentReleaseVersion.digits(1) + 1))
+    new Version(Array(mostRecentReleaseVersion.digits(0), mostRecentReleaseVersion.digits(1) + 1))
 
   private def developArtifactVersion = {
     val v = nextReleaseVersion
     ArtifactVersion(v.major,v.minor)
   }
 
-  private def releaseArtifactVersion(version:String) = {
-    val v = Version.parse(version).get
-    ArtifactVersion(v.major,v.minor)
-  }
+  private def releaseArtifactVersion(branchName:String) =
+    Version.parse(branchName) match {
+      case Some(Version(maj,min)) => Some(ArtifactVersion(maj,min))
+      case Some(Version(maj,min,0)) => Some(ArtifactVersion(maj,min,Some(0)))
+      case _ => None
+    }
 
-  private def hotfixArtifactVersion(version:String) = {
-    val v = Version.parse(version).get
-    ArtifactVersion(v.major,v.minor,v.incremental)
-  }
+  private def hotfixArtifactVersion(branchName:String) =
+    Version.parse(branchName) match {
+      case Some(Version(maj,min,inc)) if inc > 0 => Some(ArtifactVersion(maj,min,Some(inc)))
+      case _ => None
+    }
 
   private def featureArtifactVersion(feature:String) = {
     val v = nextReleaseVersion
@@ -124,7 +127,7 @@ class GitFlow(val repository:Repository) {
     }
 
     findUniqueBranch("release/", localBranches).flatMap({
-      r => Some(releaseArtifactVersion(r.stripPrefix("release/")))
+      r => releaseArtifactVersion(r.stripPrefix("release/"))
     }) orElse
     findUniqueBranch("feature/", localBranches).flatMap({
       r => Some(featureArtifactVersion(r.stripPrefix("feature/")))
@@ -133,7 +136,7 @@ class GitFlow(val repository:Repository) {
       r => Some(developArtifactVersion)
     }) orElse
     findUniqueBranch("hotfix/", localBranches).flatMap({
-      r => Some(hotfixArtifactVersion(r.stripPrefix("hotfix/")))
+      r => hotfixArtifactVersion(r.stripPrefix("hotfix/"))
     })
   }
 
@@ -144,12 +147,17 @@ class GitFlow(val repository:Repository) {
     }
   }
 
+  private def expectSome[A](o:Option[A],msg:String):Option[A] = o match {
+    case Some(x) => o
+    case None => throw new IllegalStateException(msg)
+  }
+
   private def currentBranchArtifactVersion = {
     val Slashed = "([^/]+)/(.+)".r
     currentBranch match {
       case "develop" => Some(developArtifactVersion)
-      case Slashed("release", version) => Some(releaseArtifactVersion(version))
-      case Slashed("hotfix", version) => Some(hotfixArtifactVersion(version))
+      case Slashed("release", version) => expectSome(releaseArtifactVersion(version),s"invalid release branch name '$currentBranch' should be release/x.x or release/x.x.0")
+      case Slashed("hotfix", version) => expectSome(hotfixArtifactVersion(version),s"invalid hotfix branch name '$currentBranch' should be hotfix/x.x.N where N > 0")
       case Slashed("feature", feature) => Some(featureArtifactVersion(feature))
       case _ => None
     }
