@@ -1,8 +1,10 @@
+import org.scalawag.sbt.gitflow.GitFlow
+
 organization := "org.scalawag.sbt.gitflow"
 
 name := "sbt-gitflow"
 
-version := "1.0.0"
+version := GitFlow.WorkingDir.version.toString
 
 crossPaths := false
 

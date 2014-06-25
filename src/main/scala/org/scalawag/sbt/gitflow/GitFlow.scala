@@ -6,9 +6,7 @@ import java.io.File
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder
 import org.eclipse.jgit.lib.Repository
 
-private[gitflow] case class Version(digits:Array[Int]) extends Ordered[Version] {
-  require(digits.size >= 2 && digits.size <= 3)
-
+private[gitflow] class Version(val digits:Array[Int]) extends Ordered[Version] {
   override def compare(that:Version):Int = {
     // No version (-1) sorts before any version (>= 0)
     this.digits.zipAll(that.digits,-1,-1) map { case (l,r) =>
@@ -32,12 +30,14 @@ private[gitflow] object Version {
 
   private[gitflow] def parse(s:String) =
     if ( VersionTag.pattern.matcher(s).matches )
-      Some(Version(s.split('.').map(_.toInt)))
+      Some(new Version(s.split('.').map(_.toInt)))
     else
       None
+
+  def unapplySeq(v:Version) = Some(v.digits.toSeq)
 }
 
-case class ArtifactVersion(major:Int,minor:Int,incremental:Option[Int],feature:Option[String],snapshot:Boolean) {
+case class ArtifactVersion(major:Int,minor:Int,incremental:Option[Int] = None,feature:Option[String] = None,snapshot:Boolean = true) {
   override val toString = {
     val i = incremental.map("." + _).getOrElse("")
     val f = feature.map("-" + _).getOrElse("")
@@ -47,11 +47,25 @@ case class ArtifactVersion(major:Int,minor:Int,incremental:Option[Int],feature:O
   }
 }
 
+object ArtifactVersion {
+  val ZeroSnapshot = ArtifactVersion(0,0)
+}
+
 class GitFlow(val repository:Repository) {
 
   private def currentCommit = repository.resolve("HEAD")
 
   private def currentBranch = repository.getBranch
+
+  private def localRefs = repository.getAllRefsByPeeledObjectId.get(currentCommit)
+
+  private def localBranches = {
+    localRefs.filter(_.getName.startsWith("refs/heads")).map(_.getName.stripPrefix("refs/heads/")).toList
+  }
+
+  private def localTags = {
+    localRefs.filter(_.getName.startsWith("refs/tags")).map(_.getName.stripPrefix("refs/tags/")).toList
+  }
 
   private def releaseVersions = {
     val ReleaseBranchRE = "refs/heads/release/(.*)".r
@@ -67,58 +81,141 @@ class GitFlow(val repository:Repository) {
   }
 
   private def tagForCurrentCommit = {
-    val tags = repository.getTags filter {
-      case (tag, ref) =>
-        // Has to be formatted like a version tag or we don't care about it
-        Version.parse(tag).isDefined
-    } filter {
-      case (tag, ref) =>
-        // Has to point to our current commit or we don't care about it.
-        val w = new RevWalk(repository)
-        val commitId = w.parseAny(ref.getObjectId) match {
-          case tag: RevTag => tag.getObject.getId
-          case tag: RevCommit => tag.getId
-        }
-        commitId == currentCommit
-    } map {
-      case (tag, ref) =>
-        // All we really care about is the simple tag name.
-        tag //.replaceAllLiterally("refs/tags/", "")
-    }
+    val tags = localTags flatMap Version.parse map {_.toString}
 
     if (tags.size > 1)
       throw new IllegalStateException("your current commit has multiple version tags (so ambiguous): " + tags.mkString(" "))
-    if (tags.size < 1)
-      throw new IllegalStateException("your current commit does not have a recognized git flow version tag or branch")
 
-    tags.head
+    tags.headOption
   }
 
   private def mostRecentReleaseVersion = releaseVersions.last
 
   private def nextReleaseVersion =
-    Version(Array(mostRecentReleaseVersion.digits(0), mostRecentReleaseVersion.digits(1) + 1))
+    new Version(Array(mostRecentReleaseVersion.digits(0), mostRecentReleaseVersion.digits(1) + 1))
 
-  def version = {
-    val Slashed = "([^/]+)/(.+)".r
+  private def developArtifactVersion = {
+    val v = nextReleaseVersion
+    ArtifactVersion(v.major,v.minor)
+  }
 
-    currentBranch match {
-      case "develop" =>
-        val v = nextReleaseVersion
-        ArtifactVersion(v.major, v.minor, None, None, true)
-      case Slashed("release", version) =>
-        val v = Version.parse(version).get
-        ArtifactVersion(v.major, v.minor, None, None, true)
-      case Slashed("hotfix", version) =>
-        val v = Version.parse(version).get
-        ArtifactVersion(v.major, v.minor, v.incremental, None, true)
-      case Slashed("feature", feature) =>
-        val v = nextReleaseVersion
-        ArtifactVersion(v.major, v.minor, None, Some(feature), true)
-      case _ =>
-        val v = Version.parse(tagForCurrentCommit).get
-        ArtifactVersion(v.major, v.minor, v.incremental, None, false)
+  private def releaseArtifactVersion(branchName:String) =
+    Version.parse(branchName) match {
+      case Some(Version(maj,min)) => Some(ArtifactVersion(maj,min))
+      case Some(Version(maj,min,0)) => Some(ArtifactVersion(maj,min,Some(0)))
+      case _ => None
     }
+
+  private def hotfixArtifactVersion(branchName:String) =
+    Version.parse(branchName) match {
+      case Some(Version(maj,min,inc)) if inc > 0 => Some(ArtifactVersion(maj,min,Some(inc)))
+      case _ => None
+    }
+
+  private def featureArtifactVersion(feature:String) = {
+    val v = nextReleaseVersion
+    ArtifactVersion(v.major,v.minor,feature = Some(feature))
+  }
+
+  private def detachedHeadArtifactVersion = {
+    def findUniqueBranch(prefix:String, branches:List[String]):Option[String] = {
+      branches.filter(_.startsWith(prefix)) match {
+        case branch :: Nil => Some(branch)
+        case Nil => None
+        case _ => throw new IllegalStateException(("your current commit has multiple branches of the same type (so ambiguous): " + branches.mkString(" ")))
+      }
+    }
+
+    findUniqueBranch("release/", localBranches).flatMap({
+      r => releaseArtifactVersion(r.stripPrefix("release/"))
+    }) orElse
+    findUniqueBranch("feature/", localBranches).flatMap({
+      r => Some(featureArtifactVersion(r.stripPrefix("feature/")))
+    }) orElse
+    findUniqueBranch("develop", localBranches).flatMap({
+      r => Some(developArtifactVersion)
+    }) orElse
+    findUniqueBranch("hotfix/", localBranches).flatMap({
+      r => hotfixArtifactVersion(r.stripPrefix("hotfix/"))
+    })
+  }
+
+  private def taggedArtifactVersion = {
+    tagForCurrentCommit flatMap { tag =>
+      val v = Version.parse(tag).get
+      Some(ArtifactVersion(v.major,v.minor,v.incremental,snapshot = false))
+    }
+  }
+
+  private def expectSome[A](o:Option[A],msg:String):Option[A] = o match {
+    case Some(x) => o
+    case None => throw new IllegalStateException(msg)
+  }
+
+  private def currentBranchArtifactVersion = {
+    val Slashed = "([^/]+)/(.+)".r
+    currentBranch match {
+      case "develop" => Some(developArtifactVersion)
+      case Slashed("release", version) => expectSome(releaseArtifactVersion(version),s"invalid release branch name '$currentBranch' should be release/x.x or release/x.x.0")
+      case Slashed("hotfix", version) => expectSome(hotfixArtifactVersion(version),s"invalid hotfix branch name '$currentBranch' should be hotfix/x.x.N where N > 0")
+      case Slashed("feature", feature) => Some(featureArtifactVersion(feature))
+      case _ => None
+    }
+  }
+
+  /**
+   * The identifiedVersion is determined by applying the following rules in order, stopping as soon as one succeeds:
+   * 1) If the develop branch is checked out, the version is <next_release_version>-SNAPSHOT
+   * 2) If a release branch is checked out, the version is <release-version>-SNAPSHOT
+   * 3) If a hotfix branch is checked out, the version is <hotfix-version>-SNAPSHOT
+   * 4) If a feature branch is checked out, the version is <next-release-version>-<feature-name>-SNAPSHOT
+   * 5) If one and only one version tag refers to the current commit, the version is the same as the tag
+   *    (If more than one version tag refers to the commit, an IllegalStateException is thrown)
+   * 6) If one and only one release branch refers to the current commit, the version is <release-version>-SNAPSHOT
+   *    (If more than one release branch refers to the commit, an IllegalStateException is thrown)
+   * 7) If one and only one feature branch refers to the current commit, the version is <next-release-version>-<feature-name>-SNAPSHOT
+   *    (If more than one feature branch refers to the commit, an IllegalStateException is thrown)
+   * 8) If the develop branch refers to the current commit, the version is <next_release_version>-SNAPSHOT
+   * 9) If one and only one hotfix branch refers to the current commit, the version is <hotfix-version>-SNAPSHOT
+   *    (If more than one feature branch refers to the commit, an IllegalStateException is thrown)
+   *
+   * The following patterns are used to identify the branches:
+   * release branch: release/<release-version>
+   * hotfix branch: hotfix/<hotfix-version>
+   * feature branch: feature/<feature-name>
+   * develop branch: develop
+   *
+   * Version tags must match the pattern <major>.<minor>.<optional incremental> Regex: \d+\.\d+(\.\d+)?
+   *
+   * @return the best artifact version to use, given the state of git
+  **/
+
+  def identifiedVersion = currentBranchArtifactVersion orElse taggedArtifactVersion orElse detachedHeadArtifactVersion
+
+  /** Returns the identifiedVersion of the git directory (if available).  Otherwise, throws an IllegalStateException.
+   */
+
+  def version = identifiedVersion getOrElse {
+    throw new IllegalStateException(s"Unable to determine version from checked out branch, tags, or other refs.\n${toString}")
+  }
+
+  /** Returns the identifiedVersion of the git directory (if available).  Otherwise, returns 0.0-SNAPSHOT.
+   */
+
+  def versionOrZero = identifiedVersion getOrElse ArtifactVersion.ZeroSnapshot
+
+  /** Returns the identifiedVersion of the git directory (if available).  Otherwise, returns the current develop version.
+   */
+
+  def versionOrDevelop = identifiedVersion getOrElse developArtifactVersion
+
+  override def toString: String = {
+    s"""
+      |Working Directory: ${repository.getWorkTree}
+      |Current Commit: ${currentCommit}
+      |Current Branch: ${currentBranch}
+      |Local Branches: ${localBranches.mkString(",")}
+      |Local Tags: ${localTags.mkString(",")}""".stripMargin
   }
 }
 
@@ -130,6 +227,8 @@ object GitFlow {
   lazy val WorkingDir = GitFlow()
 
   def main(args:Array[String]) {
-    println(WorkingDir.version)
+    // If an optional path is passed in as an argument, use that instead of the current directory.
+    val dir = args.headOption.map(path => GitFlow(new File(path))).getOrElse(WorkingDir)
+    println(dir.version)
   }
 }
