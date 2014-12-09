@@ -57,22 +57,25 @@ class GitFlow(val repository:Repository) {
 
   private def currentBranch = repository.getBranch
 
-  private def localRefs = repository.getAllRefsByPeeledObjectId.get(currentCommit)
+  private def refs = repository.getAllRefsByPeeledObjectId.get(currentCommit)
 
-  private def localBranches = {
-    localRefs.filter(_.getName.startsWith("refs/heads")).map(_.getName.stripPrefix("refs/heads/")).toList
+  private def branches = {
+    refs.filter(_.getName.startsWith("refs/heads")).map(_.getName.stripPrefix("refs/heads/")).toList ++
+    refs.filter(_.getName.startsWith("refs/remotes/origin")).map(_.getName.stripPrefix("refs/remotes/origin/")).toList
   }
 
-  private def localTags = {
-    localRefs.filter(_.getName.startsWith("refs/tags")).map(_.getName.stripPrefix("refs/tags/")).toList
+  private def tags = {
+    refs.filter(_.getName.startsWith("refs/tags")).map(_.getName.stripPrefix("refs/tags/")).toList
   }
 
   private def releaseVersions = {
     val ReleaseBranchRE = "refs/heads/release/(.*)".r
+    val ReleaseOriginBranchRE = "refs/remotes/origin/release/(.*)".r
     val ReleaseTagRE = "refs/tags/(.*)".r
 
     val knownVersions = repository.getAllRefs.keys flatMap {
       case ReleaseBranchRE(branch) => Some(branch)
+      case ReleaseOriginBranchRE(branch) => Some(branch)
       case ReleaseTagRE(tag) => Some(tag)
       case _ => None
     } flatMap Version.parse
@@ -81,12 +84,12 @@ class GitFlow(val repository:Repository) {
   }
 
   private def tagForCurrentCommit = {
-    val tags = localTags flatMap Version.parse map {_.toString}
+    val versionTags = tags flatMap Version.parse map {_.toString}
 
-    if (tags.size > 1)
-      throw new IllegalStateException("your current commit has multiple version tags (so ambiguous): " + tags.mkString(" "))
+    if (versionTags.size > 1)
+      throw new IllegalStateException("your current commit has multiple version tags (so ambiguous): " + versionTags.mkString(" "))
 
-    tags.headOption
+    versionTags.headOption
   }
 
   private def mostRecentReleaseVersion = releaseVersions.lastOption
@@ -124,23 +127,23 @@ class GitFlow(val repository:Repository) {
 
   private def detachedHeadArtifactVersion = {
     def findUniqueBranch(prefix:String, branches:List[String]):Option[String] = {
-      branches.filter(_.startsWith(prefix)) match {
+      branches.distinct.filter(_.startsWith(prefix)) match {
         case branch :: Nil => Some(branch)
         case Nil => None
         case _ => throw new IllegalStateException(("your current commit has multiple branches of the same type (so ambiguous): " + branches.mkString(" ")))
       }
     }
 
-    findUniqueBranch("release/", localBranches).flatMap({
+    findUniqueBranch("release/", branches).flatMap({
       r => releaseArtifactVersion(r.stripPrefix("release/"))
     }) orElse
-    findUniqueBranch("feature/", localBranches).flatMap({
+    findUniqueBranch("feature/", branches).flatMap({
       r => Some(featureArtifactVersion(r.stripPrefix("feature/")))
     }) orElse
-    findUniqueBranch("develop", localBranches).flatMap({
+    findUniqueBranch("develop", branches).flatMap({
       r => Some(developArtifactVersion)
     }) orElse
-    findUniqueBranch("hotfix/", localBranches).flatMap({
+    findUniqueBranch("hotfix/", branches).flatMap({
       r => hotfixArtifactVersion(r.stripPrefix("hotfix/"))
     })
   }
@@ -219,8 +222,8 @@ class GitFlow(val repository:Repository) {
       |Working Directory: ${repository.getWorkTree}
       |Current Commit: ${currentCommit}
       |Current Branch: ${currentBranch}
-      |Local Branches: ${localBranches.mkString(",")}
-      |Local Tags: ${localTags.mkString(",")}""".stripMargin
+      |Branches: ${branches.mkString(",")}
+      |Tags: ${branches.mkString(",")}""".stripMargin
   }
 }
 
