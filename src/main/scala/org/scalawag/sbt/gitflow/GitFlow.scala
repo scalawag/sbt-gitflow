@@ -89,10 +89,15 @@ class GitFlow(val repository:Repository) {
     tags.headOption
   }
 
-  private def mostRecentReleaseVersion = releaseVersions.last
+  private def mostRecentReleaseVersion = releaseVersions.lastOption
 
   private def nextReleaseVersion =
-    new Version(Array(mostRecentReleaseVersion.digits(0), mostRecentReleaseVersion.digits(1) + 1))
+    mostRecentReleaseVersion map { mrrv =>
+      new Version(Array(mrrv.digits(0),mrrv.digits(1) + 1))
+    } getOrElse {
+      new Version(Array(0,0))
+    }
+
 
   private def developArtifactVersion = {
     val v = nextReleaseVersion
