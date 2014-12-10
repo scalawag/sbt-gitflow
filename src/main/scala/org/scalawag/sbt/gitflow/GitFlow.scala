@@ -20,7 +20,7 @@ private[gitflow] class Version(val digits:Array[Int]) extends Ordered[Version] {
 
   val major = digits(0)
   val minor = digits(1)
-  val incremental = digits.drop(2).headOption
+  val incremental = digits.drop(2).headOption.getOrElse(0)
 
   override val toString = digits.mkString(".")
 }
@@ -37,13 +37,12 @@ private[gitflow] object Version {
   def unapplySeq(v:Version) = Some(v.digits.toSeq)
 }
 
-case class ArtifactVersion(major:Int,minor:Int,incremental:Option[Int] = None,feature:Option[String] = None,snapshot:Boolean = true) {
+case class ArtifactVersion(major:Int,minor:Int,incremental:Int = 0,feature:Option[String] = None,snapshot:Boolean = true) {
   override val toString = {
-    val i = incremental.map("." + _).getOrElse("")
     val f = feature.map("-" + _).getOrElse("")
     val s = if (snapshot) "-SNAPSHOT" else ""
 
-    s"$major.$minor$i$f$s"
+    s"$major.$minor.$incremental$f$s"
   }
 }
 
@@ -109,14 +108,14 @@ class GitFlow(val repository:Repository) {
 
   private def releaseArtifactVersion(branchName:String) =
     Version.parse(branchName) match {
-      case Some(Version(maj,min)) => Some(ArtifactVersion(maj,min))
-      case Some(Version(maj,min,0)) => Some(ArtifactVersion(maj,min,Some(0)))
+      case Some(Version(maj,min)) => Some(ArtifactVersion(maj,min,0))
+      case Some(Version(maj,min,0)) => Some(ArtifactVersion(maj,min,0))
       case _ => None
     }
 
   private def hotfixArtifactVersion(branchName:String) =
     Version.parse(branchName) match {
-      case Some(Version(maj,min,inc)) if inc > 0 => Some(ArtifactVersion(maj,min,Some(inc)))
+      case Some(Version(maj,min,inc)) if inc > 0 => Some(ArtifactVersion(maj,min,inc))
       case _ => None
     }
 
