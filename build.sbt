@@ -8,6 +8,8 @@ version := GitFlow.WorkingDir.version.toString
 
 crossPaths := false
 
+parallelExecution in Test := false
+
 libraryDependencies ++= Seq(
   "org.eclipse.jgit" % "org.eclipse.jgit" % "3.3.2.201404171909-r",
   "org.scalatest" %% "scalatest" % "2.1.0" % "test",

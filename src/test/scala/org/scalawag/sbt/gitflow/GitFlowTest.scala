@@ -25,6 +25,8 @@ abstract class GitFlowTest(repo:String) extends FunSuite with Matchers with Befo
     FileUtils.deleteDirectory(tmp)
   }
 
+  implicit val cfg = Configuration(heedTwoDigitRefVersions = true,firstDevelopVersion = GitRefVersion(0,0))//,logger = StdoutLogger)
+
   protected[this] def testRefVersion(ref:String,expected:Any) {
     Git.wrap(gitflow.repository).checkout.setName(ref).call
     expected match {
