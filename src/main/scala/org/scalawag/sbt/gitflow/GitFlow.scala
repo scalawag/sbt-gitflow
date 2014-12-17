@@ -40,7 +40,7 @@ class GitFlow(val repository:Repository) {
   // branches is so similar.  Both infer the next version based on the highest release that's known to exist.  The
   // only difference between the two is whether the resulting artifact version has a feature or not.
 
-  private[this] def inferNextVersion(where:String,ref:String,feature:Option[String])(implicit cfg:Configuration):ArtifactVersion = {
+  private[this] def inferNextVersion(where:String,ref:String,feature:Option[String])(implicit cfg:Configuration):(ArtifactVersion,String) = {
     cfg.logger.debug("Finding and sorting all known releases...")
     val knownVersions = repository.getAllRefs.keys.flatMap {
       case rref @ GitReleaseBranch(branch) => Some(branch.version,rref)
@@ -61,28 +61,27 @@ class GitFlow(val repository:Repository) {
     val nextDevelopVersion = mostRecentReleaseVersion map ( _.nextMinorVersion ) getOrElse cfg.firstDevelopVersion
 
     val av = ArtifactVersion(nextDevelopVersion,feature,true).pad
+
     mostRecentReleaseVersion match {
       case Some(v) =>
-        cfg.logger.info(s"Using version $av due to $where $ref and most recent release $v")
+        (av,s"Using version $av due to $where $ref and most recent release $v")
       case None =>
-        cfg.logger.info(s"Using version $av due to $where $ref and firstDevelopVersion ${cfg.firstDevelopVersion}")
+        (av,s"Using version $av due to $where $ref and firstDevelopVersion ${cfg.firstDevelopVersion}")
     }
-    av
   }
 
   // Calculates the artifact version that should be used given the git ref version that we've chosen as the indicator.
-  private[this] def mapToArtifactVersion(where:String,ref:GitRef)(implicit cfg:Configuration):ArtifactVersion =
+  private[this] def mapToArtifactVersion(where:String,ref:GitRef)(implicit cfg:Configuration):(ArtifactVersion,String) =
     ref match {
       case b:GitDevelopBranch => inferNextVersion(where,b.ref,None)
       case b:GitFeatureBranch => inferNextVersion(where,b.ref,Some(b.feature))
       case b:GitVersionBranch =>
         val av = ArtifactVersion(b.version,None,true).pad
-        cfg.logger.info(s"Using version $av due to $where ${b.ref}")
-        av
+        (av,s"Using version $av due to $where ${b.ref}")
       case t:GitTag =>
         val av = ArtifactVersion(t.version,None,false).pad
-        cfg.logger.info(s"Using version $av due to $where ${t.ref}")
-        av
+        (av,s"Using version $av due to $where ${t.ref}")
+
     }
 
   // Attempt to find an artifact version based on HEAD.  One of the following will occur:
@@ -95,7 +94,9 @@ class GitFlow(val repository:Repository) {
     repository.getFullBranch match {
       case ref @ GitBranch(branch) =>
         cfg.logger.debug(s"  Y $ref")
-        Some(mapToArtifactVersion("HEAD",branch))
+        val (av,explanation) = mapToArtifactVersion("HEAD",branch)
+        cfg.logger.info(explanation)
+        Some(av)
       case ref =>
         cfg.logger.debug(s"  N $ref")
         None
@@ -109,14 +110,23 @@ class GitFlow(val repository:Repository) {
     // Group the refs by their un-remoted version.  Refs that have different remotes are considered equivalent here.
     // Having two of them on one commit does not create ambiguity.
 
-    val refGroups = refs.groupBy(_.localize)
+    val refGroups = refs.groupBy(mapToArtifactVersion(where,_)._1)
+
+    if ( refGroups.size > 1 ) {
+      cfg.logger.debug("Found multiple candidates, grouping by artifact version...")
+      refGroups.foreach { case(out,ins) =>
+        cfg.logger.debug(s"  $out <- ${ins.map(_.ref).mkString(" ")}")
+      }
+    }
 
     if ( refGroups.isEmpty ) {
       // No ref groups here is always OK.  That just means that this is not how we determine the artifact version.
       None
     } else if ( refGroups.size == 1 ) {
       // Only one ref group here is good.  That means that we've found an unambiguous version to use.
-      Some(mapToArtifactVersion(where, refGroups.values.head.head))
+      val (av,explanation) = mapToArtifactVersion(where,refGroups.values.head.head)
+      cfg.logger.info(explanation)
+      Some(av)
     } else {
       // More than one ref group is ambiguous.  There are refs that imply different versions.  This is bad.
 //      cfg.logger.error(s"multiple $where $what render the artifact version ambiguous:")
