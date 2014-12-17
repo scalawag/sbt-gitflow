@@ -1,5 +1,9 @@
 import org.scalawag.sbt.gitflow.GitFlow
 
+ScoverageSbtPlugin.ScoverageKeys.coverageHighlighting := false
+
+scalaVersion := "2.10.4"
+
 organization := "org.scalawag.sbt.gitflow"
 
 name := "sbt-gitflow"
@@ -14,10 +18,7 @@ sbtPlugin := true
 
 libraryDependencies ++= Seq(
   "org.eclipse.jgit" % "org.eclipse.jgit" % "3.3.2.201404171909-r",
-  "org.scalatest" %% "scalatest" % "2.1.0" % "test",
-  "net.lingala.zip4j" % "zip4j" % "1.3.2" % "test",
-  "com.google.guava" % "guava-io" % "r03" % "test",
-  "commons-io" % "commons-io" % "2.4" % "test"
+  "org.scalatest" %% "scalatest" % "2.2.1" % "test"
 )
 
 publishMavenStyle := true
