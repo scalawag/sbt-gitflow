@@ -25,7 +25,7 @@ object GitRefVersion {
   private[this] val RE3 = """(\d+)\.(\d+)\.(\d+)""".r
 
   def unapply(s:String)(implicit cfg:Configuration):Option[GitRefVersion] =  s match {
-    case RE2(major,minor) if cfg.heedTwoDigitRefVersions => Some(GitRefVersion(major.toInt,minor.toInt))
+    case RE2(major,minor) if cfg.heedSansMicroRefVersions => Some(GitRefVersion(major.toInt,minor.toInt))
     case RE3(major,minor,micro) => Some(GitRefVersion(major.toInt,minor.toInt,micro.toInt))
     case _ => None
   }

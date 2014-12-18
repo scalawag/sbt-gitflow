@@ -6,7 +6,7 @@ import java.io.File
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder
 import org.eclipse.jgit.lib.Repository
 
-case class Configuration(heedTwoDigitRefVersions:Boolean = false,
+case class Configuration(heedSansMicroRefVersions:Boolean = false,
                          alwaysIncludeMicroInArtifactVersion:Boolean = true,
                          heedRemoteFilter:String => Boolean = { _ => true },
                          firstDevelopVersion:GitRefVersion = GitRefVersion(0,1),
