@@ -218,12 +218,12 @@ class GitFlow(val repository:Repository) {
     findTagVersion                                orElse
     findCoexistentBranchVersion(GitHotfixBranch)  orElse
     findCoexistentBranchVersion(GitReleaseBranch) orElse
-    findCoexistentBranchVersion(GitDevelopBranch) orElse
     findCoexistentBranchVersion(GitFeatureBranch) orElse
+    findCoexistentBranchVersion(GitDevelopBranch) orElse
     findDescendantBranchVersion(GitHotfixBranch)  orElse
     findDescendantBranchVersion(GitReleaseBranch) orElse
-    findDescendantBranchVersion(GitDevelopBranch) orElse
-    findDescendantBranchVersion(GitFeatureBranch)
+    findDescendantBranchVersion(GitFeatureBranch) orElse
+    findDescendantBranchVersion(GitDevelopBranch)
   }
 
 
