@@ -188,6 +188,7 @@ class GitFlow(val repository:Repository) {
     cfg.logger.debug(s"Looking for ${parser.label} branches that descend from HEAD...")
 
     val walk = new RevWalk(repository)
+    walk.setRetainBody(false)
     val current = walk.lookupCommit(currentCommit)
 
     val refs =
