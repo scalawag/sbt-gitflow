@@ -12,8 +12,7 @@ case class GitRefVersion(major:Int,minor:Int,micro:Option[Int] = None) extends O
       this.micro.getOrElse(0).compare(that.micro.getOrElse(0))
     ).find( _ != 0 ).getOrElse(0)
 
-  // Increment the minor version and set the micro version to 0 if it's present.
-  def nextMinorVersion = this.copy(minor = minor + 1,micro = micro.map(_ => 0))
+  def nextMinorVersion = this.copy(minor = minor + 1,micro = None)
 
   override val toString = ( Iterable(major,minor) ++ micro ) mkString "."
 }
@@ -46,18 +45,15 @@ object GitRemote {
 
 sealed trait GitRef {
   val ref:String
-  def localize:GitRef
 }
 
 sealed trait GitBranch extends GitRef {
   val remote:Option[String]
-//  def artifactVersion(implicit cfg:Configuration):ArtifactVersion
 }
 
 trait GitBranchParser {
   val label:String
   def unapply(ref:String)(implicit cfg:Configuration):Option[GitBranch]
-//  def unapply(ref:Ref)(implicit cfg:Configuration):Option[GitBranch] = unapply(ref.getName)
 }
 
 object GitBranch extends GitBranchParser {
@@ -70,17 +66,9 @@ object GitBranch extends GitBranchParser {
     case GitHotfixBranch(branch)  => Some(branch)
     case _ => None
   }
-
-//  override def unapply(ref:Ref)(implicit cfg:Configuration):Option[GitBranch] = unapply(ref.getName)
 }
 
-// TODO: configure to three digits here
-// TODO: Make artifact verion use git version instead of three ints
-
-case class GitDevelopBranch(ref:String,remote:Option[String]) extends GitBranch {
-//  override def artifactVersion(implicit cfg:Configuration) = ArtifactVersion(0,0,0,None,true)
-  override def localize = copy(remote = None,ref = null)
-}
+case class GitDevelopBranch(ref:String,remote:Option[String]) extends GitBranch
 
 object GitDevelopBranch extends GitBranchParser {
   private[this] val RE = "refs/(?:heads|remotes/([^/]+))/develop".r
@@ -91,14 +79,9 @@ object GitDevelopBranch extends GitBranchParser {
     case RE(GitRemote(remote)) => Some(GitDevelopBranch(ref,remote))
     case _ => None
   }
-
-//  def unapply(ref:Ref)(implicit cfg:Configuration):Option[GitDevelopBranch] = unapply(ref.getName)
 }
 
-case class GitFeatureBranch(ref:String,feature:String,remote:Option[String]) extends GitBranch {
-//  def artifactVersion(implicit cfg:Configuration) = ArtifactVersion(0,0,0,Some(feature),true)
-  override def localize = copy(remote = None,ref = null)
-}
+case class GitFeatureBranch(ref:String,feature:String,remote:Option[String]) extends GitBranch
 
 object GitFeatureBranch extends GitBranchParser {
   private[this] val RE = "refs/(?:heads|remotes/([^/]+))/feature/([^/]+)".r
@@ -109,14 +92,9 @@ object GitFeatureBranch extends GitBranchParser {
     case RE(GitRemote(remote),feature) => Some(GitFeatureBranch(ref,feature,remote))
     case _ => None
   }
-
-//  def unapply(ref:Ref)(implicit cfg:Configuration):Option[GitFeatureBranch] = unapply(ref.getName)
 }
 
-case class GitVersionBranch(ref:String,version:GitRefVersion,remote:Option[String]) extends GitBranch {
-//  override def artifactVersion(implicit cfg:Configuration) = ArtifactVersion(version.major,version.minor,version.micro.getOrElse(0),None,true)
-  override def localize = copy(remote = None,ref = null)
-}
+case class GitVersionBranch(ref:String,version:GitRefVersion,remote:Option[String]) extends GitBranch
 
 class GitVersionBranchParser(val label:String) extends GitBranchParser {
   private[this] val RE = s"refs/(?:heads|remotes/([^/]+))/$label/([^/]+)".r
@@ -125,17 +103,12 @@ class GitVersionBranchParser(val label:String) extends GitBranchParser {
     case RE(GitRemote(remote),GitRefVersion(v)) => Some(GitVersionBranch(ref,v,remote))
     case _ => None
   }
-
-//  def unapply(ref:Ref)(implicit cfg:Configuration):Option[GitVersionBranch] = unapply(ref.getName)
 }
 
 object GitHotfixBranch extends GitVersionBranchParser("hotfix")
 object GitReleaseBranch extends GitVersionBranchParser("release")
 
-case class GitTag(ref:String,version:GitRefVersion) extends GitRef {
-//  def artifactVersion(implicit cfg:Configuration) = ArtifactVersion(version.major,version.minor,version.micro.getOrElse(0),None,false)
-  override def localize = this
-}
+case class GitTag(ref:String,version:GitRefVersion) extends GitRef
 
 object GitTag {
   private[this] val RE = "refs/tags/([^/]+)".r
