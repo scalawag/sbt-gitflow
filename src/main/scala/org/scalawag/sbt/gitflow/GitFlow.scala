@@ -6,10 +6,18 @@ import java.io.File
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder
 import org.eclipse.jgit.lib.Repository
 
+object Configuration {
+  object NoIndicatorsBehavior extends Enumeration {
+    val Fail = Value
+    val TreatAsDevelop = Value
+  }
+}
+
 case class Configuration(heedSansMicroRefVersions:Boolean = false,
                          alwaysIncludeMicroInArtifactVersion:Boolean = true,
                          heedRemoteFilter:String => Boolean = { _ => true },
                          firstDevelopVersion:GitRefVersion = GitRefVersion(0,1),
+                         noIndicatorsBehavior:Configuration.NoIndicatorsBehavior.Value = Configuration.NoIndicatorsBehavior.TreatAsDevelop,
                          logger:Logger = NoopLogger)
 
 case class ArtifactVersion (version:GitRefVersion,feature:Option[String],snapshot:Boolean) {
@@ -230,9 +238,14 @@ class GitFlow(val repository:Repository) {
 
   def version(implicit cfg:Configuration):ArtifactVersion =
     versionOption getOrElse {
-      val defaultVersion = ArtifactVersion(cfg.firstDevelopVersion,None,true).pad
-      cfg.logger.info(s"Using default version: ${defaultVersion}")
-      defaultVersion
+      cfg.noIndicatorsBehavior match {
+        case Configuration.NoIndicatorsBehavior.Fail =>
+          throw new IllegalStateException(s"No git flow indicators found at HEAD")
+        case Configuration.NoIndicatorsBehavior.TreatAsDevelop =>
+          val (defaultVersion,explanation) = inferNextVersion("where","ref",None)
+          cfg.logger.info(explanation)
+          defaultVersion
+      }
     }
 }
 
