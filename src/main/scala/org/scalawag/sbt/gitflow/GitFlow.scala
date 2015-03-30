@@ -235,14 +235,14 @@ class GitFlow(val repository:Repository) {
     findDescendantBranchVersion(GitDevelopBranch)
   }
 
-
   def version(implicit cfg:Configuration):ArtifactVersion =
     versionOption getOrElse {
       cfg.noIndicatorsBehavior match {
         case Configuration.NoIndicatorsBehavior.Fail =>
           throw new IllegalStateException(s"No git flow indicators found at HEAD")
         case Configuration.NoIndicatorsBehavior.TreatAsDevelop =>
-          val (defaultVersion,explanation) = inferNextVersion("where","ref",None)
+          // The message happens to look OK here even though we're abusing the template string.
+          val (defaultVersion,explanation) = inferNextVersion("absence of","indicators",None)
           cfg.logger.info(explanation)
           defaultVersion
       }
