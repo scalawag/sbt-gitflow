@@ -1,5 +1,7 @@
 package org.scalawag.sbt.gitflow
 
+import java.util.Collections
+
 import org.eclipse.jgit.revwalk.RevWalk
 import scala.collection.JavaConversions._
 import java.io.File
@@ -40,9 +42,9 @@ case class ArtifactVersion (version:GitRefVersion,feature:Option[String],snapsho
 
 class GitFlow(val repository:Repository) {
 
-  private[this] def currentCommit = repository.resolve("HEAD")
+  private[this] def currentCommit = Option(repository.resolve("HEAD"))
 
-  private[this] def headRefs = repository.getAllRefsByPeeledObjectId.get(currentCommit)
+  private[this] def headRefs = currentCommit.map(repository.getAllRefsByPeeledObjectId.get).getOrElse(Collections.emptySet)
 
   // This is just a helper function that's used by mapToArtifactVersion because the handling of develop and feature
   // branches is so similar.  Both infer the next version based on the highest release that's known to exist.  The
@@ -197,28 +199,31 @@ class GitFlow(val repository:Repository) {
 
     val walk = new RevWalk(repository)
     walk.setRetainBody(false)
-    val current = walk.lookupCommit(currentCommit)
 
-    val refs =
-      try {
-        repository.getAllRefs.toSeq flatMap {
-          case (parser(r),ref) =>
-            if ( walk.isMergedInto(current,walk.lookupCommit(ref.getLeaf.getObjectId)) ) {
-              cfg.logger.debug(s"  YY ${ref.getName}")
-              Some(r)
-            } else {
-              cfg.logger.debug(s"  YN ${ref.getName}")
+    currentCommit flatMap { cc =>
+      val current = walk.lookupCommit(cc)
+
+      val refs =
+        try {
+          repository.getAllRefs.toSeq flatMap {
+            case (parser(r),ref) =>
+              if ( walk.isMergedInto(current,walk.lookupCommit(ref.getLeaf.getObjectId)) ) {
+                cfg.logger.debug(s"  YY ${ref.getName}")
+                Some(r)
+              } else {
+                cfg.logger.debug(s"  YN ${ref.getName}")
+                None
+              }
+            case (_,ref) =>
+              cfg.logger.debug(s"  N? ${ref.getName}")
               None
-            }
-          case (_,ref) =>
-            cfg.logger.debug(s"  N? ${ref.getName}")
-            None
+          }
+        } finally {
+          walk.dispose()
         }
-      } finally {
-        walk.dispose()
-      }
 
-    handleRefs("descendant","branches",refs)
+      handleRefs("descendant","branches",refs)
+    }
   }
 
   def versionOption(implicit cfg:Configuration):Option[ArtifactVersion] = {
