@@ -10,8 +10,6 @@ name := "sbt-gitflow"
 
 version := GitFlow.WorkingDir.version.toString
 
-crossPaths := false
-
 parallelExecution in Test := false
 
 sbtPlugin := true
