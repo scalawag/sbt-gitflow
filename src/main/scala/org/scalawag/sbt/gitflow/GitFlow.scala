@@ -255,8 +255,21 @@ class GitFlow(val repository:Repository) {
 }
 
 object GitFlow {
-  def apply():GitFlow = apply(new File(System.getProperty("user.dir")))
-  def apply(dir:File):GitFlow = apply((new FileRepositoryBuilder).findGitDir(dir).build)
+  private[this] def applyInternal(dir:File):GitFlow = {
+    val repo =
+      try {
+        (new FileRepositoryBuilder).findGitDir(dir).build
+      } catch {
+        case ex:IllegalArgumentException =>
+          throw new IllegalArgumentException(s"directory is not within a git repository: $dir")
+      }
+    new GitFlow(repo)
+  }
+
+  def apply() = applyInternal(new File(System.getProperty("user.dir")))
+
+  def apply(dir:File) = applyInternal(dir)
+
   def apply(repo:Repository):GitFlow = new GitFlow(repo)
 
   lazy val WorkingDir = GitFlow()
